@@ -1,0 +1,142 @@
+package logic;
+import java.io.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Scanner;
+import org.mindrot.jbcrypt.BCrypt;
+
+// 用户类
+class User implements Serializable {
+    private static final long serialVersionUID = 1L;
+    private String username;
+    private String hashedPassword;
+    private boolean isGuest;
+
+    // 注册用户构造函数
+    public User(String username, String password) {
+        this.username = username;
+        this.hashedPassword = BCrypt.hashpw(password, BCrypt.gensalt());
+        this.isGuest = false;
+    }
+
+    // 游客用户构造函数
+    public User() {
+        this.username = "Guest_" + System.currentTimeMillis();
+        this.hashedPassword = null;
+        this.isGuest = true;
+    }
+
+    // 验证密码
+    public boolean verifyPassword(String inputPassword) {
+        if (isGuest) return false;
+        return BCrypt.checkpw(inputPassword, hashedPassword);
+    }
+
+    // Getter方法
+    public String getUsername() { return username; }
+    public boolean isGuest() { return isGuest; }
+}
+
+// 用户管理类
+class UserManager {
+    private static final String SAVE_DIR = "users/";
+    private Map<String, User> users = new HashMap<>();
+
+    public UserManager() {
+        // 确保用户目录存在
+        new File(SAVE_DIR).mkdirs();
+        loadUsersFromFiles();
+    }
+
+    // 注册新用户
+    public boolean register(String username, String password) {
+        if (users.containsKey(username)) {
+            System.out.println("用户名已存在！");
+            return false;
+        }
+        User newUser = new User(username, password);
+        users.put(username, newUser);
+        saveUserToFile(newUser);
+        return true;
+    }
+
+    // 用户登录
+    public User login(String username, String password) {
+        User user = users.get(username);
+        if (user == null || !user.verifyPassword(password)) {
+            System.out.println("用户名或密码错误！");
+            return null;
+        }
+        return user;
+    }
+
+    // 从文件加载用户数据
+    private void loadUsersFromFiles() {
+        File dir = new File(SAVE_DIR);
+        if (!dir.exists()) return;
+
+        for (File file : dir.listFiles()) {
+            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+                User user = (User) ois.readObject();
+                users.put(user.getUsername(), user);
+            } catch (Exception e) {
+                System.err.println("加载用户文件错误: " + file.getName());
+            }
+        }
+    }
+
+    // 保存用户到文件
+    private void saveUserToFile(User user) {
+        if (user.isGuest()) return;
+
+        try (ObjectOutputStream oos = new ObjectOutputStream(
+                new FileOutputStream(SAVE_DIR + user.getUsername() + ".dat"))) {
+            oos.writeObject(user);
+        } catch (IOException e) {
+            System.err.println("保存用户文件错误: " + user.getUsername());
+        }
+    }
+}
+
+// 游戏会话类
+class GameSession {
+    private User currentUser;
+    private UserManager userManager;
+
+    public GameSession(UserManager userManager) {
+        this.userManager = userManager;
+    }
+
+    // 游客模式入口
+    public void startAsGuest() {
+        currentUser = new User();
+        System.out.println("游客模式启动，ID: " + currentUser.getUsername());
+        startGame();
+    }
+    // 注册/登录入口
+    public void startWithLogin(String username, String password, boolean isNewUser) {
+        if (isNewUser) {
+            if (!userManager.register(username, password)) {
+                return; // 注册失败
+            }
+        }
+        currentUser = userManager.login(username, password);
+        if (currentUser != null) {
+            startGame();
+        }
+    }
+
+    // 开始游戏
+    private void startGame() {
+        System.out.println("\n=== 游戏开始 ===");
+        System.out.println("当前用户: " + currentUser.getUsername());
+        System.out.println("模式: " + (currentUser.isGuest() ? "游客" : "注册用户"));
+        // 这里可以添加游戏主逻辑
+    }
+
+    public User getCurrentUser() {
+        return currentUser;
+    }
+}
+
+// 主程序
